@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.10)
 project(Blink C CXX)
 
 # Define the target MCU and clock frequency
-set(MCU atmega32u4)
+set(MCU atmega328p)
 set(F_CPU 16000000UL)
 
 # Define the source file
@@ -31,7 +31,7 @@ add_custom_command(TARGET blink POST_BUILD
 
 # Add a custom target to upload the HEX file to the microcontroller
 add_custom_target(upload
-    COMMAND sudo avrdude -v -p ${MCU} -c avr109 -P /dev/ttyACM0 -b 57600 -U flash:w:${HEX}:i
+    COMMAND sudo avrdude -F -V -c arduino -p ${MCU} -P /dev/ttyACM0 -b 115200 -U flash:w:${HEX}
     DEPENDS ${HEX}
     COMMENT "Uploading HEX to microcontroller"
 )
