@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.10)
 
 # Define the project name
-project(Blink C CXX)
+project(Main C CXX)
 
 # Define the target MCU and clock frequency
 set(MCU atmega328p)
 set(F_CPU 16000000UL)
 
 # Define the source file
-set(SRC blink.cpp)
+set(SRC main.cpp)
 
 # Define the compiler and flags
 set(CMAKE_C_COMPILER avr-gcc)
@@ -17,14 +17,14 @@ set(CMAKE_C_FLAGS "-mmcu=${MCU} -DF_CPU=${F_CPU} -Os")
 set(CMAKE_CXX_FLAGS "-mmcu=${MCU} -DF_CPU=${F_CPU} -Os")
 
 # Add the executable
-add_executable(blink ${SRC})
+add_executable(main ${SRC})
 
 # Define the output files
-set(ELF ${CMAKE_BINARY_DIR}/blink)
-set(HEX ${CMAKE_BINARY_DIR}/blink.hex)
+set(ELF ${CMAKE_BINARY_DIR}/main)
+set(HEX ${CMAKE_BINARY_DIR}/main.hex)
 
 # Add a custom command to convert the ELF file to a HEX file
-add_custom_command(TARGET blink POST_BUILD
+add_custom_command(TARGET main POST_BUILD
     COMMAND avr-objcopy -O ihex -R .eeprom ${ELF} ${HEX}
     COMMENT "Converting ELF to HEX"
 )
