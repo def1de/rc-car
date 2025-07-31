@@ -165,8 +165,75 @@ void handleControls() {
     }
 }
 
-void handleStatus() {
-    server.send(200, "text/plain", ledState ? "ON" : "OFF");
+void handleMove() {
+    String direction = server.arg("plain");
+    direction.toLowerCase();
+    direction.trim();
+    Serial.println("Move direction: " + direction);
+
+    if (direction == "forward") {
+        Serial.println("Moving forward");
+        digitalWrite(FRONT, HIGH);
+        digitalWrite(REAR, LOW);
+    } else if (direction == "backward") {
+        Serial.println("Moving backward");
+        digitalWrite(FRONT, LOW);
+        digitalWrite(REAR, HIGH);
+    } else if (direction == "stop") {
+        Serial.println("Stopping movement");
+        digitalWrite(FRONT, LOW);
+        digitalWrite(REAR, LOW);
+    } else {
+        server.send(400, "text/plain", "Invalid move direction");
+        return;
+    }
+
+    server.send(200, "text/plain", "Moving " + direction);
+}
+
+void handleTurn() {
+    String direction = server.arg("plain");
+    direction.toLowerCase();
+    direction.trim();
+    Serial.println("Turn direction: " + direction);
+
+    if (direction == "left") {
+        Serial.println("Turning left");
+        digitalWrite(RIGHT, LOW);
+        digitalWrite(LEFT, HIGH);
+    } else if (direction == "right") {
+        Serial.println("Turning right");
+        digitalWrite(RIGHT, HIGH);
+        digitalWrite(LEFT, LOW);
+    } else if (direction == "straight") {
+        Serial.println("Going straight");
+        digitalWrite(RIGHT, LOW);
+        digitalWrite(LEFT, LOW);
+    } else {
+        server.send(400, "text/plain", "Invalid turn direction");
+        return;
+    }
+
+    server.send(200, "text/plain", "Turning " + direction);
+}
+
+void handleSetSpeed() {
+    String speedStr = server.arg("plain");
+    speedStr.trim();
+    Serial.println("Set speed: " + speedStr);
+
+    int speed = speedStr.toInt();
+    if (speed < 0 || speed > 255) {
+        server.send(400, "text/plain", "Invalid speed value (0-255)");
+        return;
+    }
+
+    ledcWrite(PWM_SPEED_CHANNEL, speed);
+    float percentage = (speed / 255.0) * 100.0;
+
+    Serial.println("Speed set to: " + String(speed) + " (" + String(percentage, 1) + "%)");
+
+    server.send(200, "text/plain", "Speed set to " + String(speed));
 }
 
 void handleGPIOData() {
@@ -245,10 +312,11 @@ void setup() {
     
     // Define web server routes
     server.on("/", handleRoot);
-    server.on("/controls", HTTP_POST, handleControls);
-    server.on("/status", handleStatus);
+    server.on("/move", HTTP_POST, handleMove);
+    server.on("/turn", HTTP_POST, handleTurn);
+    server.on("/speed", HTTP_POST, handleSetSpeed);
     server.on("/gpiodata", handleGPIOData);
-    
+
     // Start server
     server.begin();
     Serial.println("Web server started!");

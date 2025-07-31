@@ -159,8 +159,17 @@
             let gamepadConnected = false;
             let ltPressed = false;
             let lastSentTime = 0;
-            let lastSentControls = null;
             const SEND_THROTTLE_MS = 1000 / 60;
+
+            // Global variables for controller inputs
+            let steering = 0;
+            let backward = 0;
+            let forward = 0;
+
+            // Track last sent states to avoid redundant requests
+            let lastSpeed = -1;
+            let lastMoveState = "";
+            let lastTurnState = "";
 
             // Check for gamepad support
             if ("getGamepads" in navigator) {
@@ -184,123 +193,141 @@
                 function pollGamepad() {
                     const gamepads = navigator.getGamepads();
 
-                    for (let i = 0; i < gamepads.length; i++) {
-                        const gamepad = gamepads[i];
+                    const gamepad = gamepads[0];
 
-                        if (gamepad) {
-                            // Display all axis values in DOM
-                            if (gamepad.axes.length > 0) {
-                                const axisDisplay = gamepad.axes
-                                    .map((value, index) => `Axis ${index}: ${value.toFixed(3)}`)
-                                    .join(" | ");
-                                document.getElementById("axis-values").textContent = axisDisplay;
-                            }
-
-                            // Track specific controller inputs
-                            let steering = gamepad.axes[0] || 0; // Right stick horizontal
-                            let backward = gamepad.axes[4] || 0; // Left Trigger (LT)
-                            let forward = gamepad.axes[5] || 0; // Right Trigger (RT)
-
-                            // Convert trigger values from -1 to 1 range to 0 to 1 range if needed
-                            backward = (backward + 1) / 2;
-                            if (backward < 0.05) backward = 0;
-
-                            forward = (forward + 1) / 2;
-                            if (forward < 0.05) forward = 0;
-
-                            // Create controls dictionary
-                            const controls = {
-                                steering: steering,
-                                backward: backward,
-                                forward: forward,
-                            };
-
-                            // Display individual control values
-                            document.getElementById("lt-value").innerHTML = `Steering: ${steering.toFixed(
-                                3
-                            )} | Backward (LT): ${backward.toFixed(3)} | Forward (RT): ${forward.toFixed(3)}`;
-
-                            // Throttle sending to server - only send if enough time has passed or values changed significantly
-                            const currentTime = Date.now();
-                            const controlsChanged =
-                                !lastSentControls ||
-                                Math.abs(steering - lastSentControls.steering) > 0.05 ||
-                                Math.abs(backward - lastSentControls.backward) > 0.05 ||
-                                Math.abs(forward - lastSentControls.forward) > 0.05;
-
-                            if (currentTime - lastSentTime > SEND_THROTTLE_MS && controlsChanged) {
-                                lastSentTime = currentTime;
-                                lastSentControls = { ...controls };
-
-                                // Send controls to server
-                                fetch("/controls", {
-                                    method: "POST",
-                                    headers: {
-                                        "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify(controls),
-                                })
-                                    .then((response) => {
-                                        if (!response.ok) {
-                                            console.warn("Failed to send controls to server");
-                                        }
-                                    })
-                                    .catch((error) => {
-                                        console.warn("Error sending controls:", error);
-                                    });
-                            }
-                        }
+                    if (!gamepad) {
+                        return;
+                    }
+                    // Display all axis values in DOM
+                    if (gamepad.axes.length > 0) {
+                        const axisDisplay = gamepad.axes
+                            .map((value, index) => `Axis ${index}: ${value.toFixed(3)}`)
+                            .join(" | ");
+                        document.getElementById("axis-values").textContent = axisDisplay;
                     }
 
-                    // Continue polling if gamepad is connected
-                    if (gamepadConnected) {
-                        requestAnimationFrame(pollGamepad);
+                    // Track specific controller inputs
+                    steering = gamepad.axes[0] || 0; // Right stick horizontal
+                    backward = gamepad.axes[4] || 0; // Left Trigger (LT)
+                    forward = gamepad.axes[5] || 0; // Right Trigger (RT)
+
+                    // Convert trigger values from -1 to 1 range to 0 to 1 range if needed
+                    backward = (backward + 1) / 2;
+                    if (backward < 0.05) backward = 0;
+
+                    forward = (forward + 1) / 2;
+                    if (forward < 0.05) forward = 0;
+
+                    // check if time since last sent is greater than throttle
+                    const currentTime = Date.now();
+                    if (currentTime - lastSentTime > SEND_THROTTLE_MS) {
+                        handleControls();
+                        lastSentTime = currentTime;
                     }
                 }
 
-                // Start polling when a gamepad is connected
-                function startPolling() {
-                    if (gamepadConnected) {
-                        setInterval(pollGamepad, 1000 / 60); // Poll at 60Hz
-                    }
+                // Continue polling if gamepad is connected
+                if (gamepadConnected) {
+                    requestAnimationFrame(pollGamepad);
                 }
-
-                // Check for already connected gamepads
-                function checkExistingGamepads() {
-                    const gamepads = navigator.getGamepads();
-                    for (let i = 0; i < gamepads.length; i++) {
-                        if (gamepads[i]) {
-                            gamepadConnected = true;
-                            updateControllerStatus(true, gamepads[i].id);
-                            startPolling();
-                            break;
-                        }
-                    }
-                }
-
-                // Update controller status display
-                function updateControllerStatus(connected, gamepadId = "") {
-                    const statusText = document.getElementById("status-text");
-                    if (connected) {
-                        statusText.textContent = `Connected - ${gamepadId}`;
-                        statusText.style.color = "green";
-                    } else {
-                        statusText.textContent = "Not Connected";
-                        statusText.style.color = "red";
-                        // Clear displays when disconnected
-                        document.getElementById("axis-values").textContent = "";
-                        document.getElementById("lt-value").textContent = "";
-                    }
-                }
-
-                // Initialize gamepad checking
-                checkExistingGamepads();
-
-                // Start polling when gamepad connects
-                window.addEventListener("gamepadconnected", startPolling);
-            } else {
-                console.log("Gamepad API is not supported in this browser");
             }
+
+            function handleControls() {
+                speed = Math.abs(forward - backward);
+                if (speed < 0.05) speed = 0;
+                speed = Math.round(speed * 255); // Convert to PWM value (0-255)
+
+                // Only send speed if it changed
+                if (speed !== lastSpeed) {
+                    fetch("/speed", {
+                        method: "POST",
+                        body: speed.toString(),
+                    });
+                    console.log("Speed set to:", speed);
+                    lastSpeed = speed;
+                }
+
+                // Determine movement state
+                let moveState;
+                if (forward > backward && forward > 0.05) {
+                    moveState = "forward";
+                } else if (backward > forward && backward > 0.05) {
+                    moveState = "backward";
+                } else {
+                    moveState = "stop";
+                }
+
+                // Only send movement command if state changed
+                if (moveState !== lastMoveState) {
+                    fetch("/move", {
+                        method: "POST",
+                        body: moveState,
+                    });
+                    console.log("Moving:", moveState);
+                    lastMoveState = moveState;
+                }
+
+                // Determine turn state
+                let turnState;
+                if (steering < -0.5) {
+                    turnState = "left";
+                } else if (steering > 0.5) {
+                    turnState = "right";
+                } else {
+                    turnState = "straight";
+                }
+
+                // Only send turn command if state changed
+                if (turnState !== lastTurnState) {
+                    fetch("/turn", {
+                        method: "POST",
+                        body: turnState,
+                    });
+                    console.log("Turning:", turnState);
+                    lastTurnState = turnState;
+                }
+            }
+
+            // Start polling when a gamepad is connected
+            function startPolling() {
+                if (gamepadConnected) {
+                    setInterval(pollGamepad, 1000 / 60); // Poll at 60Hz
+                }
+            }
+
+            // Check for already connected gamepads
+            function checkExistingGamepads() {
+                const gamepads = navigator.getGamepads();
+                for (let i = 0; i < gamepads.length; i++) {
+                    if (gamepads[i]) {
+                        gamepadConnected = true;
+                        updateControllerStatus(true, gamepads[i].id);
+                        startPolling();
+                        break;
+                    }
+                }
+            }
+
+            // Update controller status display
+            function updateControllerStatus(connected, gamepadId = "") {
+                const statusText = document.getElementById("status-text");
+                if (connected) {
+                    statusText.textContent = `Connected - ${gamepadId}`;
+                    statusText.style.color = "green";
+                } else {
+                    statusText.textContent = "Not Connected";
+                    statusText.style.color = "red";
+                    // Clear displays when disconnected
+                    document.getElementById("axis-values").textContent = "";
+                    document.getElementById("lt-value").textContent = "";
+                }
+            }
+
+            // Initialize gamepad checking
+            checkExistingGamepads();
+
+            // Start polling when gamepad connects
+            window.addEventListener("gamepadconnected", startPolling);
 
             // GPIO Status Polling
             function updateGPIOStatus() {
@@ -327,8 +354,8 @@
 
                                 html += `
                                     <div style="
-                                        padding: 8px; 
-                                        border-radius: 5px; 
+                                        padding: 8px;
+                                        border-radius: 5px;
                                         background: ${bgColor};
                                         border-left: 4px solid ${color};
                                         font-size: 0.85rem;
